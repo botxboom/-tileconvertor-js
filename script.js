@@ -143,23 +143,6 @@ function processImage(data) {
 	}
 }
 
-function getFileFromBlobURL(blobUrl, face) {
-	console.log(face);
-	return new Promise((resolve, reject) => {
-		fetch(blobUrl)
-			.then((response) => response.blob())
-			.then((blobData) => {
-				const file = new File([blobData], face.faceName, {
-					type: mimeType["jpg"],
-				});
-				resolve(file);
-			})
-			.catch((error) => {
-				reject(error);
-			});
-	});
-}
-
 function getFile(blobUrl, x, y, facename, folder) {
 	return new Promise((resolve, reject) => {
 		fetch(blobUrl)
@@ -175,65 +158,25 @@ function getFile(blobUrl, x, y, facename, folder) {
 	});
 }
 
+function generateFile(blobUrl, fileName) {
+	return new Promise((resolve, reject) => {
+		fetch(blobUrl)
+			.then((response) => response.blob())
+			.then((blobData) => {
+				var file = new File([blobData], `${fileName}.jpg`, {
+					type: "image/jpg",
+				});
+				resolve(file);
+			})
+			.catch((err) => reject(err));
+	});
+}
+
 function getCanvasBlob(canvas) {
 	return canvas.toDataURL();
 }
 
-let allFiles = [];
 var zip = new JSZip();
-
-// function downloadFile(blobUrl, x, y, facename, folder) {
-// 	const myFile = new File([blobUrl], `${folder}${facename}${x}_${y}.jpg`, {
-// 		type: "image/jpg",
-// 	});
-
-// 	return myFile;
-
-// 	fetch(blobUrl)
-// 		.then((response) => response.blob())
-// 		.then((blob) => {
-// 			// Create an anchor element
-// 			const a = document.createElement("a");
-// 			a.style.display = "none";
-
-// 			// Create a URL for the Blob
-// 			const url = window.URL.createObjectURL(blob);
-
-// 			// Set the Blob URL as the anchor's href
-// 			a.href = url;
-
-// 			// Set the desired filename for the download
-// 			a.download = `${folder}${facename}${x}_${y}.jpg`;
-
-// 			// Append the anchor element to the document body
-// 			document.body.appendChild(a);
-
-// 			// Trigger a click event on the anchor element to start the download
-// 			a.click();
-// 		});
-// }
-
-function saveFile(file) {
-	// Create a File object
-
-	// Create a Blob URL from the File object
-	var blobUrl = URL.createObjectURL(file);
-
-	// Create a temporary anchor element
-	var downloadLink = document.createElement("a");
-	downloadLink.href = blobUrl;
-	downloadLink.download = file.name;
-
-	// Trigger a click event on the anchor element
-	document.body.appendChild(downloadLink);
-	downloadLink.click();
-
-	// Cleanup: Remove the temporary anchor element
-	document.body.removeChild(downloadLink);
-
-	// Cleanup: Revoke the Blob URL to free up resources
-	URL.revokeObjectURL(blobUrl);
-}
 
 async function cropImageIntoTiles(
 	image,
@@ -283,8 +226,6 @@ async function cropImageIntoTiles(
 				512
 			);
 
-			document.body.appendChild(tileCanvas);
-
 			const data = getCanvasBlob(tileCanvas);
 			const file = await getFile(data, x, y, facename, folder); // generate file and save to allFiles
 			tileFolder.file(`${facename}_${y}_${x}.jpg`, file);
@@ -320,6 +261,47 @@ function rotateImage(blob) {
 	});
 }
 
+const tileFolder = zip.folder("0");
+
+function processFacesAsync(data) {
+	return new Promise(async (resolve, reject) => {
+		try {
+			// Assuming tileFolder is defined somewhere in your code
+
+			for (const face of data) {
+				const file = await getFile(face.blob, 0, 0, face.name, 0);
+				tileFolder.file(`${face.name}_${0}_${0}.jpg`, file);
+
+				await Promise.all(
+					levels.map(async (l, i) => {
+						const img = new Image();
+						img.src = face.blob;
+
+						await new Promise((imgResolve) => {
+							img.onload = async () => {
+								await cropImageIntoTiles(
+									img,
+									l,
+									l,
+									face.name,
+									face.width,
+									face.height,
+									i + 1
+								);
+								imgResolve();
+							};
+						});
+					})
+				);
+			}
+
+			resolve("Processing completed successfully");
+		} catch (error) {
+			reject(error);
+		}
+	});
+}
+
 function generateTiles() {
 	faces = faces.map(async (face) => {
 		if (face.name === "d" || face.name === "u") {
@@ -333,42 +315,77 @@ function generateTiles() {
 		return face;
 	});
 
-	Promise.all(faces).then((data) => {
-		const tileFolder = zip.folder("0");
+	Promise.all(faces).then(async (data) => {
+		await processFacesAsync(data).then(() => {
+			generatePreview(data).then(async (result) => {
+				const previewImage = await generateFile(result);
 
-		data.forEach(async (face) => {
-			const file = await getFile(face.blob, 0, 0, face.name, 0); // generate file and save to allFiles
-			tileFolder.file(`${face.name}_${0}_${0}.jpg`, file);
-			levels.forEach((l, i) => {
-				const img = new Image();
-				img.src = face.blob;
-
-				img.onload = async () => {
-					await cropImageIntoTiles(
-						img,
-						l,
-						l,
-						face.name,
-						face.width,
-						face.height,
-						i + 1
-					);
-				};
+				zip.file("preview.jpg", previewImage);
+				zip.generateAsync({ type: "blob" }).then(function (content) {
+					// see FileSaver.js
+					saveAs(content, "folder.zip");
+				});
 			});
 		});
 	});
 }
 
+function generatePreview(faces) {
+	return new Promise((resolve, reject) => {
+		faces = faces.sort((a, b) => a.name.localeCompare(b.name));
+
+		const canvas = document.createElement("canvas");
+		const context = canvas.getContext("2d");
+
+		canvas.width = 256;
+		canvas.height = 256 * 6;
+
+		let offsetY = 0;
+
+		function loadImage(url) {
+			return new Promise((imageResolve, imageReject) => {
+				const img = new Image();
+				img.onload = () => {
+					imageResolve(img);
+				};
+				img.onerror = (error) => {
+					imageReject(error);
+				};
+				img.src = url;
+			});
+		}
+
+		async function processImages() {
+			for (const face of faces) {
+				try {
+					const img = await loadImage(face.blob);
+					context.drawImage(
+						img,
+						0,
+						0,
+						img.width,
+						img.height,
+						0,
+						offsetY,
+						256,
+						256
+					);
+					offsetY += 256;
+				} catch (error) {
+					reject(error);
+					return;
+				}
+			}
+
+			resolve(canvas.toDataURL()); // You can use the result as a data URL or perform other actions
+		}
+
+		processImages();
+	});
+}
+
 const convertTiles = document.getElementById("convertTiles");
 convertTiles.addEventListener("click", () => generateTiles());
-
-const downloadButton = document.getElementById("downloadFaces");
-downloadButton.addEventListener("click", () => {
-	zip.generateAsync({ type: "blob" }).then(function (content) {
-		// see FileSaver.js
-		saveAs(content, "folder.zip");
-	});
-});
 
 function renderFace(data, faceName, position) {
 	const face = new CubeFace(faceName);
@@ -387,7 +404,7 @@ function renderFace(data, faceName, position) {
 	const setDownload = ({ data: imageData }) => {
 		const extension = settings.format.value;
 
-		getDataURL(imageData, extension).then(async (url) => {
+		getDataURL(imageData, "jpg").then(async (url) => {
 			faces.push({
 				blob: url,
 				name: faceName,
