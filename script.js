@@ -257,8 +257,8 @@ async function cropImageIntoTiles(
 	ctx.drawImage(image, 0, 0);
 
 	// Calculate the size of each tile
-	var tileSizeX = 512;
-	var tileSizeY = 512;
+	var tileSizeX = Math.floor(width / numCols);
+	var tileSizeY = Math.floor(height / numRows);
 
 	for (var x = 0; x < numCols; x++) {
 		for (var y = 0; y < numRows; y++) {
@@ -266,8 +266,8 @@ async function cropImageIntoTiles(
 			let tileCanvas = document.createElement("canvas");
 
 			let tileCtx = tileCanvas.getContext("2d");
-			tileCanvas.width = tileSizeX;
-			tileCanvas.height = tileSizeY;
+			tileCanvas.width = 512;
+			tileCanvas.height = 512;
 
 			// x and y are tile labels
 
@@ -279,8 +279,8 @@ async function cropImageIntoTiles(
 				tileSizeY,
 				0,
 				0,
-				tileSizeX,
-				tileSizeY
+				512,
+				512
 			);
 
 			document.body.appendChild(tileCanvas);
@@ -379,6 +379,7 @@ function renderFace(data, faceName, position) {
 		face: faceName,
 		rotation: (Math.PI * settings.cubeRotation.value) / 180,
 		interpolation: settings.interpolation.value,
+		size: 512,
 	};
 
 	const worker = new Worker("convert.js");
