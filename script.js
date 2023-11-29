@@ -261,7 +261,7 @@ function rotateImage(blob) {
 	});
 }
 
-const tileFolder = zip.folder("0");
+const tileFolder = zip.folder("1");
 
 function processFacesAsync(data) {
 	return new Promise(async (resolve, reject) => {
@@ -286,7 +286,7 @@ function processFacesAsync(data) {
 									face.name,
 									face.width,
 									face.height,
-									i + 1
+									i + 2
 								);
 								imgResolve();
 							};
@@ -396,7 +396,6 @@ function renderFace(data, faceName, position) {
 		face: faceName,
 		rotation: (Math.PI * settings.cubeRotation.value) / 180,
 		interpolation: settings.interpolation.value,
-		size: 512,
 	};
 
 	const worker = new Worker("convert.js");
