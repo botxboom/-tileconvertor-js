@@ -1,6 +1,6 @@
 # Panorama To Cubemap
 
-A web app which converts 360° panoramas to six cube faces and allows one to download tiles for 3 levels
+A web app which converts 360° panoramas to six cube faces and allows one to download tiles for 3 levels. Built on top of https://github.com/jaxry/panorama-to-cubemap
 
 ## Features
 
